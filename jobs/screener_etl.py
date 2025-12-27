@@ -7,24 +7,17 @@ import gspread
 
 class Screener():
   def __init__(self):
-    self.base_url = 'https://www.screener.in'
-    self.industry_to_url = {}
     self.stock_to_data = {}
     self.epoch_time = time.time()
     self.stock = None
-
-  def get_industry_to_url(self):
-    soup = BeautifulSoup(requests.get(self.base_url+'/market').text,'html.parser')
-    for ele in soup.find_all('a', href=lambda href: href and href.startswith('/market/')):
-      self.industry_to_url[ele.text] = self.base_url + ele['href']
 
   def get_price_and_ratios(self):
     for ele in self.stock_to_data[self.stock]['Soup'].find_all('span',{'class':'name'}):
       if ele.text.strip() == 'Current Price':
         self.stock_to_data[self.stock]['LTP'] = float(ele.find_next('span',{'class':'number'}).text.replace(',',''))
       elif ele.text.strip() == 'High / Low':
-        self.stock_to_data[self.stock]['52W H'] = float(ele.find_all_next('span',{'class':'number'})[0].text.replace(',',''))
-        self.stock_to_data[self.stock]['52W L'] = float(ele.find_all_next('span',{'class':'number'})[1].text.replace(',',''))
+        self.stock_to_data[self.stock]['52W H'] = float(ele.find_all_next('span',{'class':'number'})[0].text.replace(',','')) if ele.find_all_next('span',{'class':'number'})[0].text.replace(',','')!='' else 0
+        self.stock_to_data[self.stock]['52W L'] = float(ele.find_all_next('span',{'class':'number'})[1].text.replace(',','')) if ele.find_all_next('span',{'class':'number'})[1].text.replace(',','')!='' else 0
       elif ele.text.strip() == 'Stock P/E':
         self.stock_to_data[self.stock]['PE'] = float(ele.find_next('span',{'class':'number'}).text.replace(',','')) if ele.find_next('span',{'class':'number'}).text.replace(',','')!='' else 0
 
@@ -75,45 +68,42 @@ class Screener():
     section = self.stock_to_data[self.stock]['Soup'].find('section',{'id':'shareholding'})
     if section:
       tbl = section.find('table',{'class':'data-table'})
-      for row in tbl.find_all('tr'):
-        button = row.find('button')
-        if button:
-          txt = button['onclick'].strip()
-          type = txt[txt.find("('")+2:txt.find("',")]
-        else:
-          type = row.find('td').text.strip() if row.find('td') else None
-        data = [float(col.text.strip().replace(',','').replace('%',''))
-          for col in row.find_all('td')[1:] if col.text.strip()]
-        if type == 'foreign_institutions' and len(data)>7:
-          fii_ttm = round(sum(data[-4:])/4,2)
-          fii_pttm = round(sum(data[-8:-4])/4,2)
-          fii_ttm_pttm = fii_ttm-fii_pttm
-          self.stock_to_data[self.stock]['FII_TTM_PTTM'] = fii_ttm_pttm
+      if tbl:
+        for row in tbl.find_all('tr'):
+          button = row.find('button')
+          if button:
+            txt = button['onclick'].strip()
+            type = txt[txt.find("('")+2:txt.find("',")]
+          else:
+            type = row.find('td').text.strip() if row.find('td') else None
+          data = [float(col.text.strip().replace(',','').replace('%',''))
+            for col in row.find_all('td')[1:] if col.text.strip()]
+          if type == 'foreign_institutions' and len(data)>7:
+            fii_ttm = round(sum(data[-4:])/4,2)
+            fii_pttm = round(sum(data[-8:-4])/4,2)
+            fii_ttm_pttm = fii_ttm-fii_pttm
+            self.stock_to_data[self.stock]['FII_TTM_PTTM'] = fii_ttm_pttm
 
   def get_stock_to_data(self):
-    for i, (industry, url) in enumerate(self.industry_to_url.items(), start=1):
-      time.sleep(1)
-      stocks_url = {ele.text : self.base_url+ele['href']
-        for ele in BeautifulSoup(requests.get(url).text,'html.parser').find_all('a', href=lambda href: href and href.startswith('/company/'))}
-      for s, (self.stock, stock_url) in enumerate(stocks_url.items(), start=1):
-        time.sleep(0.5)
-        soup = BeautifulSoup(requests.get(stock_url).text,'html.parser')
-        self.stock_to_data[self.stock] = {'url':stock_url,'Industry':industry,'Soup':soup, 'symbol':stock_url.split('/')[4],
-                                          'LTP':None,'52W L':None,'52W H':None,'PE':None,
-                                          'Reported_Upto':None,'Upcoming_Date':None,
-                                          'Sales_TTM':None,'Profit_TTM':None,'NPM_TTM':None,
-                                          'Sales_Growth_10Y':None,'Sales_Growth_5Y':None,'Sales_Growth_3Y':None,'Sales_Growth_TTM':None,
-                                          'Profit_Growth_10Y':None,'Profit_Growth_5Y':None,'Profit_Growth_3Y':None,'Profit_Growth_TTM':None,
-                                          'FII_TTM_PTTM':None}
-        print(f"\r{industry}[{i}/{len(self.industry_to_url)}] {self.stock}[{s}/{len(stocks_url)}] ", end="", flush=True)
-        self.get_price_and_ratios()
-        self.get_quarterly_results()
-        self.get_profit_loss()
-        self.get_margin_data()
-        self.get_fii_data()
-        self.stock_to_data[self.stock]['Soup'] = None
-        if not self.stock_to_data[self.stock]['LTP']:
-          print(stock_url)
+    for s, (self.stock, stock_url) in enumerate(stocks_url.items(), start=1):
+      time.sleep(0.5)
+      soup = BeautifulSoup(requests.get(stock_url).text,'html.parser')
+      self.stock_to_data[self.stock] = {'url':stock_url,'Industry':industry,'Soup':soup, 'symbol':stock_url.split('/')[4],
+                                        'LTP':None,'52W L':None,'52W H':None,'PE':None,
+                                        'Reported_Upto':None,'Upcoming_Date':None,
+                                        'Sales_TTM':None,'Profit_TTM':None,'NPM_TTM':None,
+                                        'Sales_Growth_10Y':None,'Sales_Growth_5Y':None,'Sales_Growth_3Y':None,'Sales_Growth_TTM':None,
+                                        'Profit_Growth_10Y':None,'Profit_Growth_5Y':None,'Profit_Growth_3Y':None,'Profit_Growth_TTM':None,
+                                        'FII_TTM_PTTM':None}
+      print(f"\r{industry}[{i}/{len(self.industry_to_url)}] {self.stock}[{s}/{len(stocks_url)}] ", end="", flush=True)
+      self.get_price_and_ratios()
+      self.get_quarterly_results()
+      self.get_profit_loss()
+      self.get_margin_data()
+      self.get_fii_data()
+      self.stock_to_data[self.stock]['Soup'] = None
+      if not self.stock_to_data[self.stock]['LTP']:
+        print(stock_url)
 
   def update_data_to_sheets(self,gc):
     doc = gc.open('Screener Tracker')
@@ -186,6 +176,5 @@ class Screener():
 
 def run(gc):
   scraper = Screener()
-  scraper.get_industry_to_url()
   scraper.get_stock_to_data()
   scraper.update_data_to_sheets(gc)
